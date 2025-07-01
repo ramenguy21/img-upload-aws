@@ -12,18 +12,19 @@ This project implements a full-stack image upload solution using AWS AppSync, Co
 ## Deployment
 
 ### Prerequisites
+
 - AWS CLI configured with appropriate permissions
 - Valid AWS account with permissions to create CloudFormation stacks
 
 ### Deploy the Stack
 
 ```bash
-aws cloudformation deploy \
-  --template-file template.yaml \
-  --stack-name image-upload-stack \
-  --parameter-overrides StackName=image-upload-stack \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --region us-east-1
+aws cloudformation deploy
+  --template-file template.yaml
+  --stack-name image-upload-stack
+  --parameter-overrides StackName=image-upload-stack
+  --capabilities CAPABILITY_NAMED_IAM
+  --region me-south-1
 ```
 
 ### Get Stack Outputs
@@ -103,8 +104,8 @@ mutation GetImageUploadUrl($fileName: String!, $fileType: String!) {
 
 - [ ] **Unauthorized Request**: Call the mutation without an Authorization header
   - Expected: GraphQL error indicating authentication failure
-  
 - [ ] **Invalid Token**: Call with an expired or malformed token
+
   - Expected: GraphQL error indicating invalid authentication
 
 - [ ] **Valid Token**: Call with a valid JWT token from Cognito
@@ -114,10 +115,8 @@ mutation GetImageUploadUrl($fileName: String!, $fileType: String!) {
 
 - [ ] **Presigned URL Generation**: Verify the mutation returns a valid presigned URL
   - Expected: URL should be accessible and properly formatted
-  
 - [ ] **Correct S3 Key Format**: Verify the key follows `images/{userId}/{fileName}`
   - Expected: Key should contain the authenticated user's ID
-  
 - [ ] **URL Expiration**: Test that the URL expires after ~5 minutes
   - Expected: URL should become invalid after expiration time
 
@@ -131,7 +130,6 @@ mutation GetImageUploadUrl($fileName: String!, $fileType: String!) {
     "PRESIGNED_URL_FROM_MUTATION"
   ```
   - Expected: HTTP 200 response
-  
 - [ ] **Verify S3 Location**: Check that the file appears in the correct S3 path
   ```bash
   aws s3 ls s3://YOUR_BUCKET_NAME/images/USER_ID/
@@ -142,7 +140,6 @@ mutation GetImageUploadUrl($fileName: String!, $fileType: String!) {
 
 - [ ] **Cross-User Access**: Verify users cannot access other users' upload paths
   - Expected: Each user should only be able to upload to their own folder
-  
 - [ ] **File Type Validation**: Test with different file types
   - Expected: Content-Type should be properly set based on fileType parameter
 

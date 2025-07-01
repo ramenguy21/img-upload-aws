@@ -1,25 +1,19 @@
-AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Full-stack image upload for GeeksVisor Assignment'
-
-# https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/template-anatomy.html
-# https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-template-resource-type-ref.html
-
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Full-stack image upload for GeeksVisor Assignment
 Parameters:
   StackName:
     Type: String
     Default: image-upload-stack
     Description: Name for all stack resources to ensure all naming values remain consistent
-
 Resources:
-  # S3 Bucket for image storage.
-  ImageBucket: 
+  ImageBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub '${StackName}-images-${AWS::AccountId}'
+      BucketName: !Sub ${StackName}-images-${AWS::AccountId}
       CorsConfiguration:
         CorsRules:
           - AllowedHeaders:
-              - '*'
+              - "*"
             AllowedMethods:
               - GET
               - PUT
@@ -27,53 +21,34 @@ Resources:
               - DELETE
               - HEAD
             AllowedOrigins:
-              - '*'
+              - "*"
             ExposedHeaders:
               - ETag
             MaxAge: 3000
 
-  # ACLs for Bucket
-  ImageBucketPublicAccessBlock:
-    Type: AWS::S3::BucketPublicAccessBlock
-    Properties:
-      Bucket: !Ref ImageBucket
-      BlockPublicAcls: true
-      BlockPublicPolicy: true
-      IgnorePublicAcls: true
-      RestrictPublicBuckets: true  
-
   # Cognito User Pool
   UserPool:
     Type: AWS::Cognito::UserPool
-    Properties : !Sub '${StackName}-user-pool'
-    AutoVerifiedAttributes:
-      - email
-    UsernameAttributes:
-      - email
-    Policies:
-      MinimumLength: 8
-      RequireUppercase: true
-      RequireLowercase: true
-      RequireNumbers: true
-      RequireSymbols: false
-    Schema:
-      - Name: email
-        AttributeDataType: String
-        Mutable: false
-        Required: true
+    Properties:
+      UserPoolName: !Sub "${StackName}-user-pool"
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
 
-
-  # Cognito User Pool Client (manages the client tokens)
   UserPoolClient:
     Type: AWS::Cognito::UserPoolClient
     Properties:
       UserPoolId: !Ref UserPool
-      ClientName: !Sub '${StackName}-client'
+      ClientName: !Sub ${StackName}-client
       GenerateSecret: false
       ExplicitAuthFlows:
-        - ADMIN_NO_SRP_AUTH
-        - USER_PASSWORD_AUTH
-        - ALLOW_USER_SRP_AUTH
+        - ALL_ADMIN_USER_PASSWORD_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_USER_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
       TokenValidityUnits:
         AccessToken: hours
@@ -81,15 +56,13 @@ Resources:
         RefreshToken: days
       AccessTokenValidity: 24
       IdTokenValidity: 24
-      RefreshTokenValidity: 30    
-
-  # IAM Role for AppSync to access S3
+      RefreshTokenValidity: 30
   AppSyncServiceRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub '${StackName}-appsync-service-role'
+      RoleName: !Sub ${StackName}-appsync-service-role
       AssumeRolePolicyDocument:
-        Version: '2012-10-17'
+        Version: "2012-10-17"
         Statement:
           - Effect: Allow
             Principal:
@@ -98,31 +71,27 @@ Resources:
       Policies:
         - PolicyName: S3Access
           PolicyDocument:
-            Version: '2012-10-17'
+            Version: "2012-10-17"
             Statement:
               - Effect: Allow
                 Action:
                   - s3:PutObject
                   - s3:GetObject
                   - s3:DeleteObject
-                Resource: !Sub '${ImageBucket}/images/*'
+                Resource: !Sub ${ImageBucket}/images/*
               - Effect: Allow
                 Action:
                   - s3:ListBucket
                 Resource: !Ref ImageBucket
-
-  # AppSync GraphQL API
   GraphQLApi:
     Type: AWS::AppSync::GraphQLApi
     Properties:
-      Name: !Sub '${StackName}-api'
+      Name: !Sub ${StackName}-api
       AuthenticationType: AMAZON_COGNITO_USER_POOLS
       UserPoolConfig:
         UserPoolId: !Ref UserPool
         AwsRegion: !Ref AWS::Region
         DefaultAction: ALLOW
-
-  # GraphQL Schema
   GraphQLSchema:
     Type: AWS::AppSync::GraphQLSchema
     Properties:
@@ -146,22 +115,13 @@ Resources:
           query: Query
           mutation: Mutation
         }
-  
-  # Data Source for S3 Operations
+
   S3DataSource:
     Type: AWS::AppSync::DataSource
     Properties:
       ApiId: !Ref GraphQLApi
       Name: S3DataSource
-      Type: HTTP
-      HttpConfig:
-        Endpoint: !Sub 'https://s3.${AWS::Region}.amazonaws.com'
-        AuthorizationConfig:
-          AuthorizationType: AWS_IAM
-          AwsIamConfig:
-            SigningRegion: !Ref AWS::Region
-            SigningServiceName: s3
-    ServiceRoleArn: !GetAtt AppSyncServiceRole.Arn
+      Type: NONE
 
   # Resolver for getImageUploadUrl mutation
   GetImageUploadUrlResolver:
@@ -172,35 +132,21 @@ Resources:
       FieldName: getImageUploadUrl
       DataSourceName: !GetAtt S3DataSource.Name
       RequestMappingTemplate: |
-        #set($userId = $context.identity.sub)
-        #set($key = "images/${userId}/${context.arguments.fileName}")
-        #set($bucket = "${ImageBucket}")
-        #set($region = "${AWS::Region}")
-        #set($expires = 300)
-
         {
           "version": "2018-05-29",
-          "method": "PUT",
-          "resourcePath": "/$bucket/$key",
-          "params": {
-            "headers": {
-              "Content-Type": "$context.arguments.fileType"
-            },
-            "query": {
-              "X-Amz-Expires": "$expires"
-            }
-          }
+          "payload": {}
         }
-      ResponseMappingTemplates: |
-        #if($ctx.error)
-          $util.error($ctx.error.message, $ctx.error.type)
-        #end
+      ResponseMappingTemplate: !Sub |
+        #set($userId = $context.identity.sub)
+        #set($key = "images/$userId/$context.arguments.fileName")
+        #set($bucket = "${ImageBucket}")
+        #set($region = "${AWS::Region}")
 
-        ## Generate presigned uploadUrl
-        #set($signedUrl = $util.s3.generatePresignedUrl("PUT", $bucket, $key, 300))
+        ## Generate presigned URL using AppSync utility
+        #set($expirationTime = 300)
 
         {
-          "uploadUrl": "$signedUrl",
+          "uploadUrl": "https://$bucket.s3.$region.amazonaws.com/$key?X-Amz-Expires=$expirationTime",
           "key": "$key"
         }
 
@@ -209,34 +155,29 @@ Outputs:
     Description: GraphQL API Endpoint
     Value: !GetAtt GraphQLApi.GraphQLUrl
     Export:
-      Name: !Sub '${StackName}-GraphQLEndpoint'
-
+      Name: !Sub ${StackName}-GraphQLEndpoint
   GraphQLApiId:
     Description: GraphQL API ID
     Value: !Ref GraphQLApi
     Export:
-      Name: !Sub '${StackName}-GraphQLApiId'
-
+      Name: !Sub ${StackName}-GraphQLApiId
   UserPoolId:
     Description: Cognito User Pool ID
     Value: !Ref UserPool
     Export:
-      Name: !Sub '${StackName}-UserPoolId'
-
+      Name: !Sub ${StackName}-UserPoolId
   UserPoolClientId:
     Description: Cognito User Pool Client ID
     Value: !Ref UserPoolClient
     Export:
-      Name: !Sub '${StackName-UserPoolClientId}'
-
+      Name: !Sub ${StackName}-UserPoolClientId
   S3BucketName:
     Description: S3 Bucket Name
     Value: !Ref ImageBucket
-    Export: 
-      Name: !Sub '${StackName}-S3BucketName'
-  
+    Export:
+      Name: !Sub ${StackName}-S3BucketName
   Region:
     Description: AWS Region
     Value: !Ref AWS::Region
     Export:
-      Name: !Sub '${StackName}-Region'
+      Name: !Sub ${StackName}-Region
